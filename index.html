@@ -40,8 +40,10 @@ body.inplay #hud{opacity:1}
 body.touch.inplay #touch{display:block}
 body.pause #touch,body.lose #touch{display:none!important}
 body.gp #touch{display:none!important}
-#pad{position:absolute;left:var(--sl);bottom:var(--sb);width:calc(var(--u)*22);height:calc(var(--u)*22);border-radius:50%;background:rgba(255,255,255,.22);border:3px solid rgba(58,29,8,.55);pointer-events:auto;touch-action:none}
-#padKnob{position:absolute;left:50%;top:50%;width:42%;height:42%;margin:-21% 0 0 -21%;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#7ad0f0 60%,#1a7ab0);border:2px solid var(--ink);will-change:transform}
+#stickZone{position:absolute;left:0;top:0;bottom:0;width:50%;pointer-events:auto;touch-action:none}
+#pad{position:absolute;left:calc(var(--sl) + 8px);bottom:var(--sb);width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.22);border:3px solid rgba(58,29,8,.55);pointer-events:none;touch-action:none;opacity:0;transition:opacity .12s ease;z-index:4}
+#pad.show{opacity:1}
+#padKnob{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#7ad0f0 60%,#1a7ab0);border:2px solid var(--ink);will-change:transform}
 .tbtn{position:absolute;bottom:var(--sb);width:calc(var(--u)*15);height:calc(var(--u)*15);border-radius:50%;border:3px solid var(--ink);color:#fff;font-size:calc(var(--u)*2.4);letter-spacing:.06em;font-weight:800;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;text-shadow:0 1px 0 var(--ink);overflow:hidden}
 #slashBtn{right:var(--sr);background:radial-gradient(circle at 50% 30%,#b6ff7a,#3cb82a 55%,#1a7a12);box-shadow:0 3px 0 #0c5d0a}
 #spinBtn{right:calc(var(--sr) + var(--u)*16.4);bottom:calc(var(--sb) + var(--u)*2.2);width:calc(var(--u)*12.6);height:calc(var(--u)*12.6);background:radial-gradient(circle at 50% 30%,#fff3a0,#ffb21f 50%,#ff6a10);box-shadow:0 3px 0 #9b3d00}
@@ -110,6 +112,7 @@ body.gp #touch{display:none!important}
       <div class="tag">Under attack!</div>
     </div>
     <div id="touch">
+      <div id="stickZone" aria-hidden="true"></div>
       <div id="pad"><div id="padKnob"></div></div>
       <div id="spinBtn" class="tbtn"><span>SPIN</span><i id="spinCd"></i></div>
       <div id="slashBtn" class="tbtn">SLASH</div>
@@ -246,14 +249,18 @@ const Snd = (() => {
   return A;
 })();
 
+const STICK_DEAD = 0.15;
+const STICK_RADIUS = 60;
+
 const Input = {
   x: 0, z: 0,
   slash: false, slashEdge: false, slashFromTouch: false,
   spin: false, spinEdge: false,
   kbX: 0, kbZ: 0, padX: 0, padZ: 0, gpX: 0, gpZ: 0,
   gpHave: false, gpActive: false, prevBtn: [],
+  stickOn: false, stickCx: 0, stickCy: 0,
   init() {
-    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0 && !window.matchMedia('(pointer:fine)').matches;
+    const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
     if (isTouch || /touch=1/.test(location.search)) document.body.classList.add('touch');
     this.initKeys(); this.initTouch(); this.initPad();
   },
@@ -275,22 +282,91 @@ const Input = {
     window.addEventListener('keydown', (e) => { if (!e.repeat) down(e, true); });
     window.addEventListener('keyup', (e) => down(e, false));
   },
+  _deadzone(dx, dy) {
+    const m = Math.hypot(dx, dy);
+    if (m < STICK_DEAD || m < 1e-6) return { x: 0, z: 0 };
+    const t = (m - STICK_DEAD) / (1 - STICK_DEAD);
+    return { x: (dx / m) * t, z: (dy / m) * t };
+  },
   initTouch() {
-    const pad = $('pad'), knob = $('padKnob');
-    let id = null, cx = 0, cy = 0, rad = 1;
-    const set = (px, py) => {
-      const dx = clamp((px - cx) / rad, -1, 1), dy = clamp((py - cy) / rad, -1, 1);
-      const dead = 0.08; let vx = dx, vz = dy;
-      const m = Math.hypot(vx, vz); if (m < dead) { vx = 0; vz = 0; } else { const s = (m - dead) / (1 - dead); vx *= s / m; vz *= s / m; }
-      this.padX = vx; this.padZ = vz;
-      knob.style.transform = 'translate(' + (dx * rad * 0.46).toFixed(1) + 'px,' + (dy * rad * 0.46).toFixed(1) + 'px)';
+    const pad = $('pad'), knob = $('padKnob'), zone = $('stickZone');
+    let id = null, cx = 0, cy = 0;
+    const rad = () => STICK_RADIUS;
+    const safe = () => {
+      const cs = getComputedStyle(document.documentElement);
+      const n = (v, d) => { const x = parseFloat(cs.getPropertyValue(v)); return Number.isFinite(x) ? x : d; };
+      return { l: n('--sl', 12), r: n('--sr', 12), t: n('--st', 8), b: n('--sb', 10) };
     };
-    const start = (px, py) => { const r = pad.getBoundingClientRect(); cx = r.left + r.width / 2; cy = r.top + r.height / 2; rad = r.width / 2; set(px, py); };
-    const end = () => { id = null; this.padX = 0; this.padZ = 0; knob.style.transform = ''; };
-    pad.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.changedTouches[0]; id = t.identifier; start(t.clientX, t.clientY); }, { passive: false });
-    pad.addEventListener('touchmove', (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === id) set(t.clientX, t.clientY); }, { passive: false });
-    const te = (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === id) end(); };
-    pad.addEventListener('touchend', te, { passive: false }); pad.addEventListener('touchcancel', te, { passive: false });
+    const hide = () => {
+      id = null; this.stickOn = false; this.padX = 0; this.padZ = 0;
+      knob.style.transform = '';
+      pad.classList.remove('show');
+    };
+    const place = (px, py) => {
+      const R = rad();
+      const s = safe();
+      const w = window.innerWidth, h = window.innerHeight;
+      cx = clamp(px, s.l + R, Math.min(w * 0.5, w - s.r - R));
+      cy = clamp(py, s.t + R, h - s.b - R);
+      pad.style.width = (R * 2) + 'px';
+      pad.style.height = (R * 2) + 'px';
+      pad.style.left = (cx - R) + 'px';
+      pad.style.top = (cy - R) + 'px';
+      pad.style.bottom = 'auto';
+      pad.style.right = 'auto';
+      pad.classList.add('show');
+      this.stickOn = true; this.stickCx = cx; this.stickCy = cy;
+    };
+    const set = (px, py) => {
+      const R = rad();
+      let dx = (px - cx) / R, dy = (py - cy) / R;
+      const m = Math.hypot(dx, dy);
+      if (m > 1) { dx /= m; dy /= m; }
+      const v = this._deadzone(dx, dy);
+      this.padX = v.x; this.padZ = v.z;
+      const travel = R - 22;
+      knob.style.transform = 'translate(' + (dx * travel).toFixed(1) + 'px,' + (dy * travel).toFixed(1) + 'px)';
+    };
+    const onButtons = (t) => {
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      if (!el || !el.closest) return false;
+      return !!el.closest('#slashBtn, #spinBtn, #btnPause, #btnMute, #btnMuteTitle, .screen, .roundBtn, .pill');
+    };
+    const inLeft = (t) => t.clientX < window.innerWidth * 0.5;
+    const start = (e) => {
+      if (Game.state !== 'play') return;
+      if (id != null) return;
+      for (const t of e.changedTouches) {
+        if (!inLeft(t) || onButtons(t)) continue;
+        e.preventDefault();
+        id = t.identifier;
+        place(t.clientX, t.clientY);
+        set(t.clientX, t.clientY);
+        break;
+      }
+    };
+    const move = (e) => {
+      if (id == null) return;
+      for (const t of e.changedTouches) if (t.identifier === id) {
+        e.preventDefault();
+        set(t.clientX, t.clientY);
+        break;
+      }
+    };
+    const end = (e) => {
+      if (id == null) return;
+      for (const t of e.changedTouches) if (t.identifier === id) {
+        e.preventDefault();
+        hide();
+        break;
+      }
+    };
+    const opts = { passive: false };
+    const root = zone || document.getElementById('app');
+    root.addEventListener('touchstart', start, opts);
+    window.addEventListener('touchmove', move, opts);
+    window.addEventListener('touchend', end, opts);
+    window.addEventListener('touchcancel', end, opts);
     const hold = (el, edgeKey, holdKey) => {
       const d = (e) => { e && e.preventDefault(); if (!this[holdKey]) this[edgeKey] = true; if (edgeKey === 'slashEdge' && e && e.type && e.type.indexOf('touch') === 0) this.slashFromTouch = true; this[holdKey] = true; el.classList.add('on'); };
       const u = (e) => { e && e.preventDefault(); this[holdKey] = false; el.classList.remove('on'); };
@@ -318,17 +394,17 @@ const Input = {
     const pr = (i) => { const x = B[i]; return !!x && (typeof x === 'object' ? (x.pressed || x.value > 0.5) : x > 0.5); };
     const now = []; for (let i = 0; i < 17; i++) now[i] = pr(i);
     const edge = (i) => now[i] && !this.prevBtn[i];
-    const ax = gp.axes && gp.axes[0] || 0, ay = gp.axes && gp.axes[1] || 0;
-    const dz = (v) => { const m = Math.abs(v); return m < 0.18 ? 0 : Math.sign(v) * (m - 0.18) / 0.82; };
-    let sx = dz(ax), sz = dz(ay);
+    const ax = (gp.axes && gp.axes[0]) || 0, ay = (gp.axes && gp.axes[1]) || 0;
+    const v = this._deadzone(ax, ay);
+    let sx = v.x, sz = v.z;
     if (now[14]) sx = -1; if (now[15]) sx = 1; if (now[12]) sz = -1; if (now[13]) sz = 1;
-    let used = Math.abs(ax) > 0.35 || Math.abs(ay) > 0.35; for (let i = 0; i < 16; i++) if (now[i]) used = true;
+    let used = Math.hypot(ax, ay) > 0.35; for (let i = 0; i < 16; i++) if (now[i]) used = true;
     if (used) { this.gpActive = true; document.body.classList.add('gp'); this.gpHave = true; }
     this.gpX = this.gpActive ? sx : 0; this.gpZ = this.gpActive ? sz : 0;
     if (this.gpActive) {
-      if (edge(0)) this.slashEdge = true; // A
-      if (edge(2) || edge(5)) this.spinEdge = true; // X or RB
-      if (edge(9)) UI.onPause && UI.onPause(); // Start
+      if (edge(0)) this.slashEdge = true;
+      if (edge(2) || edge(5)) this.spinEdge = true;
+      if (edge(9)) UI.onPause && UI.onPause();
       if (edge(0) && !document.body.classList.contains('inplay')) UI.onConfirm && UI.onConfirm();
       if (edge(1)) UI.onBack && UI.onBack();
     }
@@ -348,9 +424,11 @@ const Input = {
 const WORLD = 16;
 const FOOD_MAX = 100;
 const KNIGHT_H = 0.82;
-const KNIGHT_WALK = 1.55;
-const KNIGHT_RUN = 3.35;
+const KNIGHT_WALK = 0.70;
+const KNIGHT_RUN = 1.52;
 const KNIGHT_RAD = 0.16;
+const MOVE_ACCEL_T = 0.15;
+const CAM_YAW = 0;
 const SLASH_TIME = 0.30, SLASH_RANGE = 0.90, SLASH_ARC = 1.35;
 const SPIN_TIME = 0.42, SPIN_RANGE = 1.22, SPIN_CD = 1.65;
 const ANT_H = 0.48;
@@ -432,7 +510,7 @@ const UI = {
     this.resetKnight();
     Game.ants = []; Game.spawnLeft = 0; Game.waveT = 0; Game.fx = [];
     Game.hitStop = 0; Game.shake = 0; Game._nextArm = 0;
-    World.camYaw = Game.knight.yaw;
+    World.camYaw = CAM_YAW;
     World.snapCam();
     document.body.classList.add('inplay'); document.body.classList.remove('pause','lose');
     this.show('title', false); this.show('pause', false); this.show('lose', false); this.show('loading', false);
@@ -636,7 +714,7 @@ const World = {
   },
   snapCam() {
     const k = Game.knight;
-    this.camYaw = k.yaw;
+    this.camYaw = CAM_YAW;
     this.cam.x = k.x - Math.sin(this.camYaw) * CAM_DIST;
     this.cam.y = CAM_H;
     this.cam.z = k.z + Math.cos(this.camYaw) * CAM_DIST;
@@ -652,18 +730,19 @@ const World = {
     if (this.camLock > 0) {
       this.camLock -= dt;
       this.camera.position.set(this.cam.x, this.cam.y, this.cam.z);
-      this.camera.lookAt(k.x, CAM_LOOK_Y, k.z);
+      if (this.lookLock) this.camera.lookAt(this.lookLock.x, this.lookLock.y, this.lookLock.z);
+      else this.camera.lookAt(k.x, CAM_LOOK_Y, k.z);
       return;
     }
-    this.camYaw = dampAngle(this.camYaw, k.yaw, 2.4, dt);
+    this.camYaw = CAM_YAW;
     const tx = k.x - Math.sin(this.camYaw) * CAM_DIST;
     const ty = CAM_H;
     const tz = k.z + Math.cos(this.camYaw) * CAM_DIST;
     this.cam.x = damp(this.cam.x, tx, 4.2, dt);
     this.cam.y = damp(this.cam.y, ty, 4.2, dt);
     this.cam.z = damp(this.cam.z, tz, 4.2, dt);
-    let lx = k.x + Math.sin(k.yaw) * 0.25;
-    let lz = k.z - Math.cos(k.yaw) * 0.25;
+    let lx = k.x + Math.sin(this.camYaw) * 0.18;
+    let lz = k.z - Math.cos(this.camYaw) * 0.18;
     let x = this.cam.x, y = this.cam.y, z = this.cam.z;
     if (Game.shake > 0) {
       const fall = Game.shake / 0.16;
@@ -754,7 +833,7 @@ function spawnAnt() {
     x: Math.cos(ang) * r, z: Math.sin(ang) * r, y: 0,
     vx: 0, vz: 0, vy: 0, face: 1, at: Math.random(),
     state: 'walk', alive: true, deadT: 0, spin: 0, flash: 0,
-    speed: 1.55 + Game.wave * 0.12 + Math.random() * 0.15
+    speed: 0.78 + Game.wave * 0.07 + Math.random() * 0.08
   };
   Game.ants.push(a);
 }
@@ -762,7 +841,7 @@ function spawnAnt() {
 function makeAnt(x, z, extra) {
   const a = {
     x, z, y: 0, vx: 0, vz: 0, vy: 0, face: 1, at: 0,
-    state: 'walk', alive: true, deadT: 0, spin: 0, flash: 0, speed: 2.1
+    state: 'walk', alive: true, deadT: 0, spin: 0, flash: 0, speed: 1.05
   };
   if (extra) Object.assign(a, extra);
   Game.ants.push(a);
@@ -783,20 +862,32 @@ function spinHits(ant, k) {
   return d <= SPIN_RANGE && d > 0.02;
 }
 
+function camMove(ix, iz) {
+  const yaw = World.camYaw;
+  return {
+    x: ix * Math.cos(yaw) - iz * Math.sin(yaw),
+    z: ix * Math.sin(yaw) + iz * Math.cos(yaw)
+  };
+}
+
 function autoAim(k) {
   const touch = Input.slashFromTouch || (document.body.classList.contains('touch') && !Input.gpActive);
   if (!touch) return;
+  if (Math.hypot(Input.x, Input.z) > 0.18) return;
   const f = faceDir(k.yaw);
-  let best = null, bestD = SLASH_RANGE * 1.35;
+  let best = null, bestD = SLASH_RANGE * 1.2;
   for (const a of Game.ants) {
     if (!a.alive || (a.state !== 'walk' && a.state !== 'eat')) continue;
     const dx = a.x - k.x, dz = a.z - k.z;
     const d = Math.hypot(dx, dz);
     if (d > bestD || d < 0.05) continue;
     const ang = Math.acos(clamp((dx * f.x + dz * f.z) / d, -1, 1));
-    if (ang < 0.70) { best = a; bestD = d; }
+    if (ang < 0.48) { best = a; bestD = d; }
   }
-  if (best) k.yaw = Math.atan2(best.x - k.x, -(best.z - k.z));
+  if (best) {
+    const tyaw = Math.atan2(best.x - k.x, -(best.z - k.z));
+    k.yaw = k.yaw + angDiff(k.yaw, tyaw) * 0.55;
+  }
 }
 
 function addFx(type, x, z, y, life, h, extra) {
@@ -870,22 +961,29 @@ function updatePlay(dt) {
 
   if (k.slashT <= 0 && k.spinT <= 0) {
     const mag = Math.hypot(inp.x, inp.z);
-    if (mag > 0.08) {
-      const t = smooth(invLerp(0.10, 1.0, mag));
-      const spd = lerp(KNIGHT_WALK, KNIGHT_RUN, t);
-      k.vx = (inp.x / mag) * spd;
-      k.vz = (inp.z / mag) * spd;
-      k.speed = spd;
-      const tyaw = Math.atan2(inp.x, -inp.z);
-      k.yaw = dampAngle(k.yaw, tyaw, 12, dt);
-      k.x += k.vx * dt;
-      k.z += k.vz * dt;
-      collideKnight(k);
-      k.anim = 'run';
-      k.at += dt * (6.5 + t * 5.5);
+    const dir = camMove(inp.x, inp.z);
+    let wantVx = 0, wantVz = 0, t = 0;
+    if (mag > 1e-4) {
+      t = Math.pow(clamp(mag, 0, 1), 1.4);
+      const spd = KNIGHT_RUN * t;
+      wantVx = (dir.x / mag) * spd;
+      wantVz = (dir.z / mag) * spd;
+      const tyaw = Math.atan2(dir.x, -dir.z);
+      k.yaw = dampAngle(k.yaw, tyaw, 14, dt);
+    }
+    const accK = -Math.log(0.05) / MOVE_ACCEL_T;
+    k.vx = damp(k.vx, wantVx, accK, dt);
+    k.vz = damp(k.vz, wantVz, accK, dt);
+    if (Math.hypot(k.vx, k.vz) < 0.03 && mag < 1e-4) { k.vx = 0; k.vz = 0; }
+    k.speed = Math.hypot(k.vx, k.vz);
+    k.x += k.vx * dt;
+    k.z += k.vz * dt;
+    collideKnight(k);
+    if (k.speed > 0.10) {
+      k.anim = k.speed < KNIGHT_WALK * 1.15 ? 'walk' : 'run';
+      k.at += dt * (5.2 + k.speed * 4.2);
     } else {
-      k.vx = 0; k.vz = 0; k.speed = 0;
-      if (k.slashT <= 0 && k.spinT <= 0) { k.anim = 'idle'; k.at += dt; }
+      k.anim = 'idle'; k.at += dt;
     }
   }
 
@@ -1086,6 +1184,13 @@ function loop(now) {
   const t = now * 0.001;
   let dt = t - (loop._t || t); loop._t = t;
   dt = Math.min(1 / 30, Math.max(0, dt));
+  if (loop.frozen) {
+    syncSprites();
+    World.updateCam(0);
+    World.updateArrow();
+    World.renderer.render(World.scene, World.camera);
+    return;
+  }
   if (Game.state === 'play') {
     if (Game.hitStop > 0) {
       Game.hitStop -= dt;
@@ -1129,24 +1234,47 @@ async function boot() {
     get wave() { return Game.wave; },
     get ready() { return World.ready; },
     ants() { return Game.ants.map((a) => ({ x: a.x, z: a.z, y: a.y, alive: a.alive, state: a.state, flash: a.flash, spin: a.spin })); },
-    knight() { return { x: Game.knight.x, z: Game.knight.z, yaw: Game.knight.yaw, view: Game.knight.view, face: Game.knight.face, anim: Game.knight.anim }; },
+    knight() { const k = Game.knight; return { x: k.x, z: k.z, yaw: k.yaw, view: k.view, face: k.face, anim: k.anim, speed: k.speed, vx: k.vx, vz: k.vz }; },
+    input() { return { x: Input.x, z: Input.z, padX: Input.padX, padZ: Input.padZ }; },
+    screenPos() {
+      const k = Game.knight;
+      const v = new THREE.Vector3(k.x, 0.35, k.z);
+      v.project(World.camera);
+      return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight, nx: v.x, ny: v.y };
+    },
+    freeze(on) { loop.frozen = !!on; if (!on) loop._t = performance.now() * 0.001; },
+    step(dt) {
+      dt = Math.max(0, Math.min(1 / 30, dt));
+      if (Game.state === 'play') {
+        if (Game.hitStop > 0) Game.hitStop = Math.max(0, Game.hitStop - dt);
+        else { Game.t += dt; updatePlay(dt); }
+      }
+      syncSprites();
+      World.updateCam(dt);
+      World.updateArrow();
+      World.renderer.render(World.scene, World.camera);
+    },
+    camYaw() { return World.camYaw; },
     start() { UI.startFromTitle(); },
     slash() { Input.slashEdge = true; Input.slashFromTouch = false; },
     spin() { Input.spinEdge = true; },
     setMove(x, z) { Input.kbX = x; Input.kbZ = z; },
     setYaw(y) { Game.knight.yaw = y; },
-    camUnlock() { World.camLock = 0; },
+    camUnlock() { World.camLock = 0; World.lookLock = null; },
     lockCamView(px, py, pz, lx, ly, lz) {
       World.camLock = 8;
+      World.lookLock = { x: lx, y: ly, z: lz };
       World.cam.x = px; World.cam.y = py; World.cam.z = pz;
       World.camera.position.set(px, py, pz);
       World.camera.lookAt(lx, ly, lz);
     },
     setPos(x, z) {
       Game.knight.x = x; Game.knight.z = z;
-      World.camLock = 0;
+      Game.knight.vx = 0; Game.knight.vz = 0; Game.knight.speed = 0;
+      World.camLock = 0; World.lookLock = null;
       World.snapCam();
     },
+    clearBaddies() { Game.ants = []; Game.spawnLeft = 0; Game.waveT = 99; Game._nextArm = 99; },
     poseScale() {
       const k = Game.knight;
       k.x = FOOD.x + 0.88; k.z = FOOD.z + 0.08; k.yaw = Math.PI * 0.5; k.anim = 'idle'; k.at = 0;
@@ -1161,10 +1289,9 @@ async function boot() {
     },
     poseWalk(dirx, dirz) {
       Input.kbX = dirx; Input.kbZ = dirz;
-      const tyaw = Math.atan2(dirx, -dirz);
-      Game.knight.yaw = tyaw;
+      const dir = camMove(dirx, dirz);
+      Game.knight.yaw = Math.atan2(dir.x, -dir.z);
       World.camLock = 0;
-      World.camYaw = tyaw;
       World.snapCam();
     },
     spawnAntAt(x, z) { makeAnt(x, z); return Game.ants.length - 1; },
