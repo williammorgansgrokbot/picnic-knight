@@ -610,7 +610,7 @@ const KNIGHT_RUN = 1.52;
 const KNIGHT_RAD = 0.16;
 const MOVE_ACCEL_T = 0.15;
 const CAM_YAW = 0;
-const SLASH_TIME = 0.30, SLASH_RANGE = 0.90, SLASH_ARC = 1.35;
+const SLASH_TIME = 0.30, SLASH_RANGE = 1.02, SLASH_ARC = Math.PI * 150 / 180, ANT_HIT_R = 0.22;
 const SPIN_TIME = 0.42, SPIN_RANGE = 1.22, SPIN_CD = 1.65;
 const ANT_H = 0.48;
 const ANT_HP_NIBBLE = 9.5;
@@ -1059,15 +1059,15 @@ function makeAnt(x, z, extra) {
 function slashHits(ant, k) {
   const dx = ant.x - k.x, dz = ant.z - k.z;
   const d = Math.hypot(dx, dz);
-  if (d > SLASH_RANGE || d < 0.02) return false;
-  const f = faceDir(k.yaw);
-  const ang = Math.acos(clamp((dx * f.x + dz * f.z) / d, -1, 1));
+  if (d > SLASH_RANGE + ANT_HIT_R) return false;
+  if (d < 0.02) return true;
+  const ang = Math.abs(angDiff(k.yaw, Math.atan2(dx, -dz)));
   return ang <= SLASH_ARC * 0.5;
 }
 
 function spinHits(ant, k) {
   const d = Math.hypot(ant.x - k.x, ant.z - k.z);
-  return d <= SPIN_RANGE && d > 0.02;
+  return d <= SPIN_RANGE + ANT_HIT_R;
 }
 
 function camMove(ix, iz) {
@@ -1079,22 +1079,19 @@ function camMove(ix, iz) {
 }
 
 function autoAim(k) {
-  const touch = Input.slashFromTouch || (document.body.classList.contains('touch') && !Input.gpActive);
-  if (!touch) return;
-  if (Math.hypot(Input.x, Input.z) > 0.18) return;
-  const f = faceDir(k.yaw);
-  let best = null, bestD = SLASH_RANGE * 1.2;
+  const reach = SLASH_RANGE + ANT_HIT_R + 0.06;
+  const aimHalf = SLASH_ARC * 0.5 + 0.08;
+  let best = null, bestD = reach;
   for (const a of Game.ants) {
     if (!a.alive || (a.state !== 'walk' && a.state !== 'eat')) continue;
     const dx = a.x - k.x, dz = a.z - k.z;
     const d = Math.hypot(dx, dz);
-    if (d > bestD || d < 0.05) continue;
-    const ang = Math.acos(clamp((dx * f.x + dz * f.z) / d, -1, 1));
-    if (ang < 0.48) { best = a; bestD = d; }
+    if (d > reach || d < 0.02) continue;
+    const ang = Math.abs(angDiff(k.yaw, Math.atan2(dx, -dz)));
+    if (ang <= aimHalf && d <= bestD) { best = a; bestD = d; }
   }
   if (best) {
-    const tyaw = Math.atan2(best.x - k.x, -(best.z - k.z));
-    k.yaw = k.yaw + angDiff(k.yaw, tyaw) * 0.55;
+    k.yaw = Math.atan2(best.x - k.x, -(best.z - k.z));
   }
 }
 
@@ -1256,7 +1253,7 @@ function updatePlay(dt) {
     if (k.spinT > 0 && spinHits(a, k)) {
       const ox = a.x - k.x, oz = a.z - k.z;
       killAnt(a, ox, oz, true);
-    } else if (k.slashT > 0 && k.at > 0.12 && k.at < 0.85 && slashHits(a, k)) {
+    } else if (k.slashT > 0 && k.at > 0.06 && k.at < 0.92 && slashHits(a, k)) {
       const f = faceDir(k.yaw);
       killAnt(a, f.x, f.z, false);
     }
@@ -1338,7 +1335,13 @@ function syncSprites() {
   k.view = vis.view; k.face = vis.face;
   World.setSpriteTex(World.knightSpr, knightTex(k));
   World.place(World.knightSpr, k.x, k.z, 0);
-  World.flip(World.knightSpr, k.face);
+  if (k.anim === 'slash') {
+    const f = faceDir(k.yaw);
+    const side = f.x * Math.cos(World.camYaw) + f.z * Math.sin(World.camYaw);
+    World.flip(World.knightSpr, side >= 0 ? 1 : -1);
+  } else {
+    World.flip(World.knightSpr, k.face);
+  }
   World.knightSpr.mesh.material.rotation = 0;
   World.knightSpr.mesh.center.set(0.5, 0);
 
@@ -1528,6 +1531,8 @@ async function boot() {
       World.snapCam();
     },
     clearBaddies() { Game.ants = []; Game.spawnLeft = 0; Game.waveT = 99; Game._nextArm = 99; },
+    freezeAnts() { Game.ants.forEach((a) => { a.speed = 0; a.vx = 0; a.vz = 0; }); },
+    readySpin() { Game.knight.spinCd = 0; Game.knight.spinT = 0; },
     poseScale() {
       const k = Game.knight;
       k.x = FOOD.x + 0.88; k.z = FOOD.z + 0.08; k.yaw = Math.PI * 0.5; k.anim = 'idle'; k.at = 0;
