@@ -74,10 +74,10 @@ body.pause #camBtns,body.lose #camBtns,body.gp #camBtns,body.steal #camBtns,body
 
 .screen{position:absolute;inset:0;display:none;align-items:center;justify-content:center;z-index:8;background:rgba(20,28,12,.28)}
 .screen.show{display:flex}
-#title{background:transparent;flex-direction:column}
+#title{background:transparent;flex-direction:column;justify-content:flex-start;align-items:center}
 #title.show{background:transparent}
-.titleInner{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--u)*1.8);padding:calc(var(--st) + 8px) var(--sl) calc(var(--sb) + 8px) var(--sr);text-align:center;max-height:100%}
-#logo{width:auto;height:min(48vh, 200px);max-width:min(68vw, 460px);object-fit:contain;filter:drop-shadow(0 6px 10px rgba(0,0,0,.35))}
+.titleInner{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:calc(var(--u)*1.15);padding:calc(var(--st) + 2px) calc(var(--sl) + var(--u)*11) calc(var(--sb) + 6px) calc(var(--sr) + var(--u)*11);text-align:center;max-height:100%;width:100%}
+#logo{width:auto;height:min(68vh, 280px);max-width:min(74vw, 620px);object-fit:contain;filter:drop-shadow(0 6px 10px rgba(0,0,0,.35));flex:0 0 auto;margin:0}
 .pill{appearance:none;border:3px solid var(--ink);border-radius:99px;padding:calc(var(--u)*1.4) calc(var(--u)*5);font:inherit;font-weight:800;font-size:calc(var(--u)*3.6);color:var(--ink);background:linear-gradient(180deg,#fff6d0,#f0d48a);box-shadow:0 3px 0 var(--ink);cursor:pointer;min-width:calc(var(--u)*32)}
 .pill.go{background:linear-gradient(180deg,#ffe566,#f3b51c)}
 .perks{display:flex;flex-wrap:wrap;gap:calc(var(--u)*1.6) calc(var(--u)*3);justify-content:center;color:var(--cream);text-shadow:0 1px 2px rgba(0,0,0,.55);font-size:calc(var(--u)*2.6);font-weight:700}
@@ -744,8 +744,11 @@ const CAM_H = 2.22;
 const CAM_LOOK_Y = 0.48;
 const ROUND_TIME = 180;
 const STEAL_DUR = 5.15;
-const STORMY_H = 2.55;
-const EMMA_H = STORMY_H * 1.1;
+// Emma keeps her established height. Stormy is about half as tall (Bill:
+// the Aussie is really about half Emma's size). This replaces the old
+// Emma = 1.1× Stormy rule for this game.
+const EMMA_H = 2.805;
+const STORMY_H = EMMA_H * 0.55; // 1.54275
 const SAUSAGE = { x: 0.12, z: 1.18, h: 0.62, r: 0.46 };
 
 const FOOD = { x: -1.15, z: -0.25, h: 0.75, r: 0.4125 };
@@ -1179,6 +1182,22 @@ const World = {
     const tex = this.tex[texName];
     const aspect = (tex && tex.image) ? tex.image.width / tex.image.height : 1;
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, alphaTest: 0.12 });
+    // THREE.Sprite's vertex shader takes length(modelMatrix[0]), so scale.x
+    // sign is ignored. Pass a flip uniform so left/right facing actually mirrors.
+    const uFlip = { value: 1 };
+    mat.userData.uFlip = uFlip;
+    // Don't flip scale.x in the sprite vertex shader: length() already drops the
+    // sign, and a negative scale reverses triangle winding so the sprite is culled.
+    // Mirror UVs instead.
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uFlip = uFlip;
+      shader.vertexShader = 'uniform float uFlip;\n' + shader.vertexShader.replace(
+        '#include <uv_vertex>',
+        '#include <uv_vertex>\n#ifdef USE_MAP\nif ( uFlip < 0.0 ) vMapUv.x = 1.0 - vMapUv.x;\n#endif'
+      );
+    };
+    mat.customProgramCacheKey = () => 'pk-sprite-uvflip';
+    mat.side = THREE.DoubleSide;
     const mesh = new THREE.Sprite(mat);
     mesh.center.set(0.5, 0);
     mesh.scale.set(h * aspect, h, 1);
@@ -1186,7 +1205,7 @@ const World = {
     const g = new THREE.PlaneGeometry(h * 0.55, h * 0.28);
     const bmat = new THREE.MeshBasicMaterial({ color: 0x1a1408, transparent: true, opacity: 0.26, depthWrite: false });
     const blob = new THREE.Mesh(g, bmat); blob.rotation.x = -Math.PI / 2; blob.position.y = 0.012;
-    return { mesh, blob, h, name: texName };
+    return { mesh, blob, h, name: texName, blobBaseH: h };
   },
   setSpriteTex(spr, name) {
     if (spr.name === name) return;
@@ -1196,6 +1215,23 @@ const World = {
     const sign = spr.mesh.scale.x < 0 ? -1 : 1;
     spr.mesh.scale.set(Math.abs(spr.h * aspect) * sign, spr.h, 1);
     spr.name = name;
+    this.syncBlob(spr);
+  },
+  syncBlob(spr) {
+    if (!spr || !spr.blob) return;
+    const base = spr.blobBaseH || spr.h;
+    if (!base) return;
+    const k = spr.h / base;
+    spr.blob.scale.set(k, k, 1);
+  },
+  setSpriteH(spr, h) {
+    if (!spr) return;
+    spr.h = h;
+    const tex = spr.mesh.material.map;
+    const aspect = (tex && tex.image) ? tex.image.width / tex.image.height : 1;
+    const sign = spr.mesh.scale.x < 0 ? -1 : 1;
+    spr.mesh.scale.set(Math.abs(h * aspect) * sign, h, 1);
+    this.syncBlob(spr);
   },
   place(spr, x, z, y) {
     spr.mesh.position.set(x, y || 0, z);
@@ -1204,6 +1240,9 @@ const World = {
   flip(spr, face) {
     const s = Math.abs(spr.mesh.scale.x);
     spr.mesh.scale.x = face < 0 ? -s : s;
+    const u = spr.mesh.material && spr.mesh.material.userData && spr.mesh.material.userData.uFlip;
+    if (u) u.value = face < 0 ? -1 : 1;
+    spr.face = face < 0 ? -1 : 1;
   },
   showSausage(on) {
     if (!this.sausageSpr) return;
@@ -1214,6 +1253,21 @@ const World = {
   hideDogs() {
     [this.stormySpr, this.emmaSpr].forEach((s) => {
       if (!s) return;
+      s.mesh.visible = false; s.blob.visible = false;
+    });
+    this.hideTitleAnts();
+  },
+  ensureTitleAnts(n) {
+    if (!this.titleAntSpr) this.titleAntSpr = [];
+    while (this.titleAntSpr.length < n) {
+      const s = this.makeSprite('ant_walk_0.png', ANT_H);
+      s.mesh.visible = false; s.blob.visible = false;
+      this.scene.add(s.mesh); this.scene.add(s.blob);
+      this.titleAntSpr.push(s);
+    }
+  },
+  hideTitleAnts() {
+    (this.titleAntSpr || []).forEach((s) => {
       s.mesh.visible = false; s.blob.visible = false;
     });
   },
@@ -1229,8 +1283,8 @@ const World = {
   },
   placeDogsForSteal(t, who, grabbed) {
     const st = stealPose(t, who, grabbed);
-    if (this.stormySpr) this.stormySpr.h = STORMY_H;
-    if (this.emmaSpr) this.emmaSpr.h = EMMA_H;
+    if (this.stormySpr) this.setSpriteH(this.stormySpr, STORMY_H);
+    if (this.emmaSpr) this.setSpriteH(this.emmaSpr, EMMA_H);
     this._applyDog(this.stormySpr, st.stormy, 'stormy');
     this._applyDog(this.emmaSpr, st.emma, 'emma');
   },
@@ -1343,6 +1397,7 @@ const World = {
     this.fxSpr.forEach((s) => { this.scene.remove(s.mesh); if (s.blob) this.scene.remove(s.blob); });
     this.fxSpr = [];
     this.hideDogs();
+    this.hideTitleAnts();
     this.showSausage(false);
     this.camLock = 0; this.lookLock = null;
   },
@@ -1386,6 +1441,29 @@ const World = {
 };
 
 function faceDir(yaw) { return { x: Math.sin(yaw), z: -Math.cos(yaw) }; }
+
+// Painted run/walk art faces screen-right (scale.x > 0). Flip so the sprite
+// faces its motion as seen on screen, including after a camera orbit.
+function screenFace(vx, vz, prev) {
+  let sx = 0;
+  const cam = World.camera;
+  if (cam) {
+    cam.updateMatrixWorld();
+    const e = cam.matrixWorld.elements;
+    sx = (vx || 0) * e[0] + (vz || 0) * e[2];
+  } else {
+    const yaw = World.camYaw || 0;
+    sx = (vx || 0) * Math.cos(yaw) + (vz || 0) * Math.sin(yaw);
+  }
+  if (Math.abs(sx) < 1e-4) return prev == null ? 1 : prev;
+  return sx >= 0 ? 1 : -1;
+}
+
+function projectScreen(x, y, z) {
+  const v = new THREE.Vector3(x, y, z);
+  v.project(World.camera);
+  return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight, nx: v.x, ny: v.y };
+}
 
 function viewFromCamera(k) {
   const toCamX = World.cam.x - k.x, toCamZ = World.cam.z - k.z;
@@ -1645,28 +1723,59 @@ function eatFood(a, f, dt) {
 function titleDogPose(kind, t) {
   const period = 8.2;
   const emma = kind === 'emma';
-  const lag = emma ? period * 0.48 : 0;
+  const lag = 0; // enter from opposite sides together, cross around the logo
   const u = ((t + lag) % period) / period;
   const right = !emma;
   const startX = right ? -8.4 : 8.4;
   const endX = right ? 8.4 : -8.4;
   const x = lerp(startX, endX, u);
   const z = emma ? 0.22 : -0.62;
-  const face = right ? 1 : -1;
+  const vx = endX - startX;
+  const face = screenFace(vx, 0, right ? 1 : -1);
   const tex = kind + '_sausage_' + (Math.floor((t + lag) * 8) % 3) + '.png';
-  return { x, z, y: 0, face, visible: true, tex };
+  return { x, z, y: 0, face, visible: true, tex, vx, vz: 0 };
 }
+
+const TITLE_ANT_LANES = [
+  { z: 1.58, dir: 1, n: 4, period: 11.6, phase: 0.00, span: 13.2 },
+  { z: -1.12, dir: -1, n: 4, period: 10.4, phase: 0.18, span: 13.0 },
+  { z: 0.72, dir: 1, n: 4, period: 12.2, phase: 0.08, span: 13.6 }
+];
 
 function updateTitle(dt) {
   Game.titleT = (Game.titleT || 0) + dt;
   const st = { stormy: titleDogPose('stormy', Game.titleT), emma: titleDogPose('emma', Game.titleT) };
+  World._titleMovers = [];
   if (World.stormySpr) {
-    World.stormySpr.h = STORMY_H * 0.86;
+    World.setSpriteH(World.stormySpr, STORMY_H * 0.86);
     World._applyDog(World.stormySpr, st.stormy, 'stormy');
+    World._titleMovers.push(Object.assign({ kind: 'stormy' }, st.stormy));
   }
   if (World.emmaSpr) {
-    World.emmaSpr.h = EMMA_H * 0.86;
+    World.setSpriteH(World.emmaSpr, EMMA_H * 0.86);
     World._applyDog(World.emmaSpr, st.emma, 'emma');
+    World._titleMovers.push(Object.assign({ kind: 'emma' }, st.emma));
+  }
+  let count = 0;
+  TITLE_ANT_LANES.forEach((lane) => { count += lane.n; });
+  World.ensureTitleAnts(count);
+  let i = 0;
+  for (const lane of TITLE_ANT_LANES) {
+    for (let k = 0; k < lane.n; k++) {
+      const spr = World.titleAntSpr[i++];
+      const u = (Game.titleT / lane.period + k / lane.n + lane.phase) % 1;
+      const x0 = -lane.span * 0.5, x1 = lane.span * 0.5;
+      const x = lane.dir > 0 ? lerp(x0, x1, u) : lerp(x1, x0, u);
+      const vx = lane.dir > 0 ? 1 : -1;
+      const face = screenFace(vx, 0, lane.dir);
+      const tex = 'ant_walk_' + (Math.floor(Math.abs(x) * 3.2 + k) % 4) + '.png';
+      World.setSpriteTex(spr, tex);
+      World.place(spr, x, lane.z, 0);
+      World.flip(spr, face);
+      spr.mesh.visible = true;
+      spr.blob.visible = true;
+      World._titleMovers.push({ kind: 'ant', x, z: lane.z, y: 0, face, vx, vz: 0, visible: true });
+    }
   }
 }
 
@@ -1767,7 +1876,6 @@ function updateWasp(a, dt, k) {
     a.vx = (dx / d) * a.speed * 0.72;
     a.vz = (dz / d) * a.speed * 0.72;
     a.x += a.vx * dt; a.z += a.vz * dt;
-    a.face = a.vx < 0 ? -1 : 1;
     a.at += dt * 10;
     if (d < (f ? f.eatR + 0.85 : 1.1) || diveKnight) {
       a.state = 'dive';
@@ -1782,10 +1890,10 @@ function updateWasp(a, dt, k) {
     const destY = a.diveTarget === 'knight' ? 0.45 : 0.18;
     const dx = destX - a.x, dz = destZ - a.z, d = Math.hypot(dx, dz);
     const sp = a.speed * 1.55;
-    if (d > 0.02) { a.x += (dx / d) * sp * dt; a.z += (dz / d) * sp * dt; }
+    if (d > 0.02) { a.vx = (dx / d) * sp; a.vz = (dz / d) * sp; a.x += a.vx * dt; a.z += a.vz * dt; }
+    else { a.vx = 0; a.vz = 0; }
     a.y = lerp(a.y, destY, 1 - Math.exp(-6 * dt));
     a.at += dt * 12;
-    a.face = dx < 0 ? -1 : 1;
     if (d < ((f && a.diveTarget !== 'knight') ? f.eatR : 0.38) && a.y < 0.38) {
       if (a.diveTarget === 'knight') {
         a.state = 'climb';
@@ -1836,10 +1944,10 @@ function updateBossAI(a, dt, k) {
   }
   if (a.state === 'charge') {
     a.chargeT -= dt;
-    a.x += a.cx * 3.4 * dt;
-    a.z += a.cz * 3.4 * dt;
+    a.vx = a.cx * 3.4; a.vz = a.cz * 3.4;
+    a.x += a.vx * dt;
+    a.z += a.vz * dt;
     a.at += dt * 8;
-    a.face = a.cx < 0 ? -1 : 1;
     if (a.chargeT <= 0) a.state = 'walk';
     return;
   }
@@ -1855,7 +1963,6 @@ function updateBossAI(a, dt, k) {
     a.state = 'walk';
     a.vx = (dx / d) * a.speed; a.vz = (dz / d) * a.speed;
     a.x += a.vx * dt; a.z += a.vz * dt;
-    a.face = a.vx < 0 ? -1 : 1;
     a.at += dt * (a.speed / 1.1);
   }
   if (a.summonT <= 0) { a.state = 'summon'; a.at = 0; }
@@ -1891,13 +1998,17 @@ function stealPose(t, who, grabbed) {
     const farZ = sZ - 0.62;
     const laneZ = isStealer ? nearZ : farZ;
     const startZ = isStealer ? 2.15 : 0.25;
-    let x, z, y = 0, face = 1, visible = t > 0.04, tex;
+    let x, z, y = 0, visible = t > 0.04, tex;
+    let vx = 1, vz = 0;
     const arrive = grabT - (isStealer ? 0 : 0.16);
     if (t < arrive) {
       const u = easeInOut(t / Math.max(0.01, arrive));
       const destX = isStealer ? (sX - 0.12) : (sX - 2.15);
-      x = lerp(startX - (isStealer ? 0 : 0.55), destX, u);
+      const fromX = startX - (isStealer ? 0 : 0.55);
+      x = lerp(fromX, destX, u);
       z = lerp(startZ, laneZ, u);
+      vx = destX - fromX;
+      vz = laneZ - startZ;
       tex = kind + '_run_' + (Math.floor(t * 9) % 3) + '.png';
     } else if (t < boltT) {
       const u = (t - arrive) / Math.max(0.01, boltT - arrive);
@@ -1905,23 +2016,31 @@ function stealPose(t, who, grabbed) {
         x = sX - 0.04 + Math.sin(u * Math.PI) * 0.10;
         z = nearZ;
         y = Math.sin(u * Math.PI) * 0.16;
+        vx = 1; vz = 0; // hop in place, keep facing the bolt
         tex = kind + '_grab.png';
       } else {
         x = (sX - 2.15) + u * 0.65;
         z = farZ;
+        vx = 0.65; vz = 0;
         tex = kind + '_run_' + (Math.floor(t * 9) % 3) + '.png';
       }
     } else {
       const u = easeInOut((t - boltT) / Math.max(0.01, endT - 0.15 - boltT));
-      const fromX = isStealer ? (sX + 0.28) : (sX - 1.55);
-      x = lerp(fromX, endX + (isStealer ? 0.15 : -0.55), u);
-      z = lerp(isStealer ? nearZ : farZ, isStealer ? 1.75 : 0.28, u * 0.45);
+      const fromX = isStealer ? (sX + 0.28) : (sX - 1.50);
+      const toX = endX + (isStealer ? 0.15 : -0.55);
+      const fromZ = isStealer ? nearZ : farZ;
+      const toZ = isStealer ? 1.75 : 0.28;
+      x = lerp(fromX, toX, u);
+      z = lerp(fromZ, fromZ + (toZ - fromZ) * 0.45, u);
+      vx = toX - fromX;
+      vz = (toZ - fromZ) * 0.45;
       tex = isStealer
         ? (kind + '_sausage_' + (Math.floor(t * 10) % 3) + '.png')
         : (kind + '_run_' + (Math.floor(t * 10) % 3) + '.png');
       if (x > 7.7) visible = false;
     }
-    return { x, z, y, face, visible, tex, stealer: isStealer };
+    const face = screenFace(vx, vz, 1);
+    return { x, z, y, face, visible, tex, stealer: isStealer, vx, vz };
   }
   return { stormy: dogAt('stormy'), emma: dogAt('emma'), sausageOn: !(grabbed || t >= grabT) };
 }
@@ -1938,9 +2057,10 @@ function updateSteal(dt) {
     World.showSausage(false);
     const pose = stealPose(st.t, st.who, true);
     const d = pose[st.who];
-    addFx('puff', d.x, d.z, 0.22, 0.55, 0.7, { frame: 0 });
-    addFx('puff', d.x + 0.25, d.z + 0.1, 0.18, 0.42, 0.55, { frame: 1 });
-    addFx('puff', d.x - 0.2, d.z - 0.08, 0.16, 0.38, 0.5, { frame: 0 });
+    const sizeK = (st.who === 'stormy') ? (STORMY_H / EMMA_H) : 1;
+    addFx('puff', d.x, d.z, 0.22 * sizeK, 0.55, 0.7 * sizeK, { frame: 0 });
+    addFx('puff', d.x + 0.25 * sizeK, d.z + 0.1 * sizeK, 0.18 * sizeK, 0.42, 0.55 * sizeK, { frame: 1 });
+    addFx('puff', d.x - 0.2 * sizeK, d.z - 0.08 * sizeK, 0.16 * sizeK, 0.38, 0.5 * sizeK, { frame: 0 });
     Game.shake = 0.16; Game.shakeAmp = 0.07;
     if (Snd.bark) Snd.bark(st.who);
     st.barked = true;
@@ -2073,7 +2193,6 @@ function updatePlay(dt) {
           a.vx = (dx / d) * a.speed; a.vz = (dz / d) * a.speed;
           a.x += a.vx * dt; a.z += a.vz * dt;
           a.yaw = Math.atan2(a.vx, -a.vz);
-          if (Math.abs(a.vx) > 0.05) a.face = a.vx < 0 ? -1 : 1;
           a.at += dt * (a.speed / 1.4);
         }
       }
@@ -2198,10 +2317,11 @@ function syncSprites() {
   if (Game.state === 'steal' && Game.steal) {
     World.placeDogsForSteal(Game.steal.t, Game.steal.who, Game.steal.grabbed);
   } else if (Game.state === 'title') {
-    // dogs placed in updateTitle
+    // dogs and title ants placed in updateTitle
   } else if (World.stormySpr) {
     World.hideDogs();
   }
+  if (Game.state !== 'title') World.hideTitleAnts();
 
   World.ensureAnts(Game.ants.length);
   for (let i = 0; i < World.antSpr.length; i++) {
@@ -2249,8 +2369,9 @@ function syncSprites() {
     s.mesh.material.rotation = rot;
     const flash = a.flash > 0 ? 1 + a.flash * 18 : 1;
     s.mesh.material.color.setRGB(flash, flash, flash);
-    const face = (a.face != null) ? a.face : 1;
-    World.flip(s, face);
+    a.face = screenFace(a.vx || 0, a.vz || 0, a.face);
+    World.flip(s, a.face);
+    World.syncBlob(s);
     s.blob.position.set(a.x, 0.012, a.z);
   }
 
@@ -2375,11 +2496,64 @@ async function boot() {
       else if (Game.state === 'play') {
         if (Game.hitStop > 0) Game.hitStop = Math.max(0, Game.hitStop - dt);
         else { Game.t += dt; updatePlay(dt); }
-      }
+      } else if (Game.state === 'title') { updateTitle(dt); }
       syncSprites();
       World.updateCam(dt);
       World.updateArrow();
       World.renderer.render(World.scene, World.camera);
+    },
+    syncNow() {
+      syncSprites();
+      World.updateCam(0);
+      World.updateArrow();
+      World.renderer.render(World.scene, World.camera);
+    },
+    get stormyH() { return STORMY_H; },
+    get emmaH() { return EMMA_H; },
+    setAntVel(i, vx, vz) {
+      const a = Game.ants[i];
+      if (!a) return;
+      a.vx = vx; a.vz = vz;
+      a.speed = Math.hypot(vx, vz);
+    },
+    movers() {
+      const out = [];
+      const push = (kind, spr, rec) => {
+        if (!spr || !spr.mesh || !spr.mesh.visible) return;
+        const p = spr.mesh.position;
+        const scr = projectScreen(p.x, p.y + (spr.h || 0) * 0.35, p.z);
+        out.push({
+          kind, x: p.x, z: p.z, y: p.y,
+          vx: rec && rec.vx != null ? rec.vx : 0,
+          vz: rec && rec.vz != null ? rec.vz : 0,
+          face: rec && rec.face != null ? rec.face : (spr.face != null ? spr.face : (spr.mesh.scale.x < 0 ? -1 : 1)),
+          scaleX: (spr.mesh.material.userData.uFlip ? spr.mesh.material.userData.uFlip.value : (spr.mesh.scale.x < 0 ? -1 : 1)) * Math.abs(spr.mesh.scale.x),
+          h: spr.h,
+          sx: scr.x, sy: scr.y
+        });
+      };
+      if (Game.state === 'title') {
+        const recs = World._titleMovers || [];
+        recs.forEach((r) => {
+          let spr = null;
+          if (r.kind === 'stormy') spr = World.stormySpr;
+          else if (r.kind === 'emma') spr = World.emmaSpr;
+          else if (r.kind === 'ant') {
+            spr = (World.titleAntSpr || []).find((s) => s.mesh.visible && Math.abs(s.mesh.position.x - r.x) < 0.001 && Math.abs(s.mesh.position.z - r.z) < 0.001);
+          }
+          if (spr) push(r.kind, spr, r);
+        });
+      } else if (Game.state === 'steal' && Game.steal) {
+        const pose = stealPose(Game.steal.t, Game.steal.who, Game.steal.grabbed);
+        push('stormy', World.stormySpr, pose.stormy);
+        push('emma', World.emmaSpr, pose.emma);
+      } else {
+        (Game.ants || []).forEach((a, i) => {
+          const spr = World.antSpr[i];
+          if (spr && a && a.state !== 'poof') push(a.type || 'ant', spr, a);
+        });
+      }
+      return out;
     },
     camYaw() { return World.camYaw; },
     camYawTarget() { return World.camYawTarget; },
