@@ -686,10 +686,17 @@ const STORMY_H = 2.55;
 const EMMA_H = STORMY_H * 1.1;
 const SAUSAGE = { x: 0.12, z: 1.18, h: 0.62, r: 0.46 };
 
-const FOOD = { x: -1.15, z: -0.25, h: 1.00, r: 0.55 };
+const FOOD = { x: -1.15, z: -0.25, h: 0.75, r: 0.4125 };
+const FOOD_EAT_R = 0.435; // was 0.58; 75% so ants still gather on the smaller sandwich
+// Pie sprite world width = 0.80 * (190/147) = 1.034. Basket opening is ~0.82 of
+// its sprite width (cartoon rim/walls). Scale so that opening is ~1.30× the pie
+// (inside the 1.25–1.35 band), height matched. Same world size for the raided
+// variant (basket_bitten.png) if/when it is shown.
+const BASKET_H = 1.53;
+const BASKET_R = 0.80;
 const DECOS = [
   ['pie_intact.png', -2.50, 0.95, 0.80, 0.48],
-  ['basket_intact.png', 1.75, -1.50, 1.22, 0.64],
+  ['basket_intact.png', 1.75, -1.50, BASKET_H, BASKET_R],
   ['cookies_intact.png', 0.90, 0.58, 0.52, 0.40],
   ['watermelon_intact.png', 2.30, 1.02, 0.82, 0.44]
 ];
@@ -1219,7 +1226,7 @@ const World = {
   },
   updateArrow() {
     if (Game.state !== 'play') { UI.setArrow(false); return; }
-    const v = new THREE.Vector3(FOOD.x, 0.6, FOOD.z).project(this.camera);
+    const v = new THREE.Vector3(FOOD.x, FOOD.h * 0.6, FOOD.z).project(this.camera);
     const off = v.z > 1 || v.x < -0.55 || v.x > 0.55 || v.y < -0.50 || v.y > 0.50;
     const under = Game.ants.some((a) => a.alive && a.state === 'eat');
     if (!off || !under) { UI.setArrow(false); return; }
@@ -1567,7 +1574,7 @@ function updatePlay(dt) {
       continue;
     }
     const dx = fx - a.x, dz = fz - a.z, d = Math.hypot(dx, dz);
-    if (d < 0.58) {
+    if (d < FOOD_EAT_R) {
       a.state = 'eat'; a.vx = 0; a.vz = 0; a.at += dt;
       Game.food = Math.max(0, Game.food - ANT_HP_NIBBLE * dt);
       nibbling = true;
