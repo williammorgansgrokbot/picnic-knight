@@ -24,7 +24,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#152018;font-family:
 #hud{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s}
 body.inplay #hud{opacity:1}
 #topLeft{position:absolute;left:var(--sl);top:var(--st);display:flex;gap:calc(var(--u)*2)}
-#topRight{position:absolute;right:var(--sr);top:var(--st);display:flex;gap:calc(var(--u)*1.6);pointer-events:auto}
+#topRight{position:absolute;right:var(--sr);top:var(--st);display:flex;gap:calc(var(--u)*1.6);pointer-events:auto;z-index:6}
 .panel{background:linear-gradient(180deg,rgba(255,248,220,.94),rgba(255,236,190,.9));border:2px solid var(--ink);border-radius:calc(var(--u)*3.2);padding:calc(var(--u)*1.1) calc(var(--u)*2.4);box-shadow:0 2px 0 var(--ink),0 3px 8px rgba(0,0,0,.25);min-width:calc(var(--u)*14);text-align:center}
 .panel b{font-size:calc(var(--u)*4.6);line-height:1;display:block}
 .panel small{font-size:calc(var(--u)*2);letter-spacing:.08em;text-transform:uppercase;opacity:.75}
@@ -40,11 +40,20 @@ body.inplay #hud{opacity:1}
 body.touch.inplay #touch{display:block}
 body.pause #touch,body.lose #touch{display:none!important}
 body.gp #touch{display:none!important}
-#stickZone{position:absolute;left:0;top:0;bottom:0;width:50%;pointer-events:auto;touch-action:none}
+#orbitZone{position:absolute;right:0;top:0;bottom:0;width:50%;pointer-events:none;touch-action:none;z-index:1}
+body.inplay #orbitZone{pointer-events:auto}
+body.pause #orbitZone,body.lose #orbitZone,body.gp #orbitZone{pointer-events:none!important}
+#camBtns{position:absolute;right:var(--sr);bottom:calc(var(--sb) + var(--u)*18.6);display:none;gap:calc(var(--u)*1.5);z-index:6;pointer-events:auto}
+body.inplay #camBtns{display:flex}
+body.pause #camBtns,body.lose #camBtns,body.gp #camBtns{display:none!important}
+.camBtn{width:calc(var(--u)*9);height:calc(var(--u)*9);flex:0 0 auto}
+.camBtn svg{width:62%;height:62%;fill:var(--ink);stroke:var(--ink)}
+.camBtn.on{transform:scale(.95);filter:brightness(1.08)}
+#stickZone{position:absolute;left:0;top:0;bottom:0;width:50%;pointer-events:auto;touch-action:none;z-index:2}
 #pad{position:absolute;left:calc(var(--sl) + 8px);bottom:var(--sb);width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.22);border:3px solid rgba(58,29,8,.55);pointer-events:none;touch-action:none;opacity:0;transition:opacity .12s ease;z-index:4}
 #pad.show{opacity:1}
 #padKnob{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#7ad0f0 60%,#1a7ab0);border:2px solid var(--ink);will-change:transform}
-.tbtn{position:absolute;bottom:var(--sb);width:calc(var(--u)*15);height:calc(var(--u)*15);border-radius:50%;border:3px solid var(--ink);color:#fff;font-size:calc(var(--u)*2.4);letter-spacing:.06em;font-weight:800;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;text-shadow:0 1px 0 var(--ink);overflow:hidden}
+.tbtn{position:absolute;bottom:var(--sb);z-index:6;width:calc(var(--u)*15);height:calc(var(--u)*15);border-radius:50%;border:3px solid var(--ink);color:#fff;font-size:calc(var(--u)*2.4);letter-spacing:.06em;font-weight:800;display:flex;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;text-shadow:0 1px 0 var(--ink);overflow:hidden}
 #slashBtn{right:var(--sr);background:radial-gradient(circle at 50% 30%,#b6ff7a,#3cb82a 55%,#1a7a12);box-shadow:0 3px 0 #0c5d0a}
 #spinBtn{right:calc(var(--sr) + var(--u)*16.4);bottom:calc(var(--sb) + var(--u)*2.2);width:calc(var(--u)*12.6);height:calc(var(--u)*12.6);background:radial-gradient(circle at 50% 30%,#fff3a0,#ffb21f 50%,#ff6a10);box-shadow:0 3px 0 #9b3d00}
 .tbtn.on{transform:scale(.95);filter:brightness(1.12)}
@@ -110,6 +119,15 @@ body.gp #touch{display:none!important}
     <div id="arrow" class="hidden">
       <div class="chev"><svg viewBox="0 0 24 24"><path d="M8 4l10 8-10 8" fill="none" stroke="#3a1d08" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg></div>
       <div class="tag">Under attack!</div>
+    </div>
+    <div id="orbitZone" aria-hidden="true"></div>
+    <div id="camBtns">
+      <button id="camLeft" class="roundBtn camBtn" aria-label="Rotate left" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.2 6.4a7 7 0 1 0 3.3-1.7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M8.1 2.6l.2 5.3 4.8-2.7z"/></svg>
+      </button>
+      <button id="camRight" class="roundBtn camBtn" aria-label="Rotate right" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.8 6.4a7 7 0 1 1-3.3-1.7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M15.9 2.6l-.2 5.3-4.8-2.7z"/></svg>
+      </button>
     </div>
     <div id="touch">
       <div id="stickZone" aria-hidden="true"></div>
@@ -251,6 +269,9 @@ const Snd = (() => {
 
 const STICK_DEAD = 0.15;
 const STICK_RADIUS = 60;
+const CAM_TURN = Math.PI * 2 / 3; // 120 deg/s when held
+const CAM_SWIPE = 0.008; // radians per CSS pixel
+const CAM_TAP = 0.18; // seconds: short press = 45° step
 
 const Input = {
   x: 0, z: 0,
@@ -259,10 +280,15 @@ const Input = {
   kbX: 0, kbZ: 0, padX: 0, padZ: 0, gpX: 0, gpZ: 0,
   gpHave: false, gpActive: false, prevBtn: [],
   stickOn: false, stickCx: 0, stickCy: 0,
+  kbYaw: 0, btnYaw: 0, gpYaw: 0,
+  yawSnap: 0, yawReleaseSnap: false, swipeDelta: 0,
+  _qDown: 0, _eDown: 0, _qT: 0, _eT: 0,
+  _btnL: 0, _btnR: 0, _btnLT: 0, _btnRT: 0,
+  _gpStickOn: false,
   init() {
     const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0;
     if (isTouch || /touch=1/.test(location.search)) document.body.classList.add('touch');
-    this.initKeys(); this.initTouch(); this.initPad();
+    this.initKeys(); this.initTouch(); this.initPad(); this.initOrbit();
   },
   initKeys() {
     const down = (e, on) => {
@@ -271,22 +297,58 @@ const Input = {
       else if (k === 'ArrowRight' || k === 'd' || k === 'D') this.kbX = on ? 1 : (this.kbX > 0 ? 0 : this.kbX);
       else if (k === 'ArrowUp' || k === 'w' || k === 'W') this.kbZ = on ? -1 : (this.kbZ < 0 ? 0 : this.kbZ);
       else if (k === 'ArrowDown' || k === 's' || k === 'S') this.kbZ = on ? 1 : (this.kbZ > 0 ? 0 : this.kbZ);
+      else if (k === 'q' || k === 'Q') this._yawKey('q', on);
+      else if (k === 'e' || k === 'E') this._yawKey('e', on);
       else if (k === ' ' || k === 'j' || k === 'J') { if (on && !this.slash) { this.slashEdge = true; this.slashFromTouch = false; } this.slash = on; }
       else if (k === 'Shift' || k === 'k' || k === 'K') { if (on && !this.spin) this.spinEdge = true; this.spin = on; }
       else if (on && (k === 'p' || k === 'P' || k === 'Escape')) UI.onPause && UI.onPause();
       else if (on && (k === 'm' || k === 'M')) { Snd.init(); Snd.setMuted(!Snd.muted); UI.refreshMute(); }
       else if (on && k === 'Enter') UI.onConfirm && UI.onConfirm();
       else return;
-      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].indexOf(k) >= 0) e.preventDefault();
+      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' ','q','Q','e','E'].indexOf(k) >= 0) e.preventDefault();
     };
     window.addEventListener('keydown', (e) => { if (!e.repeat) down(e, true); });
     window.addEventListener('keyup', (e) => down(e, false));
+  },
+  _yawKey(which, on) {
+    const now = performance.now() * 0.001;
+    if (which === 'q') {
+      if (on && !this._qDown) this._qT = now;
+      if (!on && this._qDown) {
+        if (now - this._qT < CAM_TAP) this.yawSnap -= 1;
+        else this.yawReleaseSnap = true;
+      }
+      this._qDown = on ? 1 : 0;
+    } else {
+      if (on && !this._eDown) this._eT = now;
+      if (!on && this._eDown) {
+        if (now - this._eT < CAM_TAP) this.yawSnap += 1;
+        else this.yawReleaseSnap = true;
+      }
+      this._eDown = on ? 1 : 0;
+    }
+    this._syncKbYaw();
+  },
+  _syncKbYaw() {
+    const now = performance.now() * 0.001;
+    let v = 0;
+    if (this._qDown && now - this._qT >= CAM_TAP) v -= 1;
+    if (this._eDown && now - this._eT >= CAM_TAP) v += 1;
+    this.kbYaw = v;
   },
   _deadzone(dx, dy) {
     const m = Math.hypot(dx, dy);
     if (m < STICK_DEAD || m < 1e-6) return { x: 0, z: 0 };
     const t = (m - STICK_DEAD) / (1 - STICK_DEAD);
     return { x: (dx / m) * t, z: (dy / m) * t };
+  },
+  _uiBlockers() {
+    return '#slashBtn, #spinBtn, #btnPause, #btnMute, #btnMuteTitle, #camLeft, #camRight, #camBtns, .screen, .roundBtn, .pill, .tbtn';
+  },
+  onButtons(t) {
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    if (!el || !el.closest) return false;
+    return !!el.closest(this._uiBlockers());
   },
   initTouch() {
     const pad = $('pad'), knob = $('padKnob'), zone = $('stickZone');
@@ -327,17 +389,12 @@ const Input = {
       const travel = R - 22;
       knob.style.transform = 'translate(' + (dx * travel).toFixed(1) + 'px,' + (dy * travel).toFixed(1) + 'px)';
     };
-    const onButtons = (t) => {
-      const el = document.elementFromPoint(t.clientX, t.clientY);
-      if (!el || !el.closest) return false;
-      return !!el.closest('#slashBtn, #spinBtn, #btnPause, #btnMute, #btnMuteTitle, .screen, .roundBtn, .pill');
-    };
     const inLeft = (t) => t.clientX < window.innerWidth * 0.5;
     const start = (e) => {
       if (Game.state !== 'play') return;
       if (id != null) return;
       for (const t of e.changedTouches) {
-        if (!inLeft(t) || onButtons(t)) continue;
+        if (!inLeft(t) || this.onButtons(t)) continue;
         e.preventDefault();
         id = t.identifier;
         place(t.clientX, t.clientY);
@@ -377,12 +434,112 @@ const Input = {
     hold($('spinBtn'), 'spinEdge', 'spin');
     document.addEventListener('touchmove', (e) => { if (e.target.closest && e.target.closest('#touch')) e.preventDefault(); }, { passive: false });
   },
+  initOrbit() {
+    const self = this;
+    let oid = null, lastX = 0, moved = 0, mouse = false;
+    const inRight = (x) => x >= window.innerWidth * 0.5;
+    const startAt = (x, y, id) => {
+      oid = id; lastX = x; moved = 0; mouse = (id === 'mouse');
+    };
+    const moveAt = (x) => {
+      const dx = x - lastX;
+      lastX = x;
+      moved += Math.abs(dx);
+      // Drag right looks right (camera orbits left of the knight, yaw increases).
+      self.swipeDelta += dx * CAM_SWIPE;
+    };
+    const endAt = () => {
+      if (oid == null) return;
+      if (moved > 6) self.yawReleaseSnap = true;
+      oid = null; mouse = false; moved = 0;
+    };
+    const opts = { passive: false };
+    window.addEventListener('touchstart', (e) => {
+      if (Game.state !== 'play') return;
+      if (oid != null) return;
+      for (const t of e.changedTouches) {
+        if (!inRight(t.clientX) || self.onButtons(t)) continue;
+        e.preventDefault();
+        startAt(t.clientX, t.clientY, t.identifier);
+        break;
+      }
+    }, opts);
+    window.addEventListener('touchmove', (e) => {
+      if (oid == null || mouse) return;
+      for (const t of e.changedTouches) if (t.identifier === oid) {
+        e.preventDefault();
+        moveAt(t.clientX);
+        break;
+      }
+    }, opts);
+    const te = (e) => {
+      if (oid == null || mouse) return;
+      for (const t of e.changedTouches) if (t.identifier === oid) { e.preventDefault(); endAt(); break; }
+    };
+    window.addEventListener('touchend', te, opts);
+    window.addEventListener('touchcancel', te, opts);
+
+    const zone = $('orbitZone') || $('app');
+    zone.addEventListener('mousedown', (e) => {
+      if (Game.state !== 'play') return;
+      if (e.button !== 0) return;
+      if (!inRight(e.clientX) || self.onButtons(e)) return;
+      e.preventDefault();
+      startAt(e.clientX, e.clientY, 'mouse');
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (oid !== 'mouse') return;
+      e.preventDefault();
+      moveAt(e.clientX);
+    });
+    window.addEventListener('mouseup', () => { if (oid === 'mouse') endAt(); });
+
+    const bindBtn = (el, dir) => {
+      if (!el) return;
+      const press = (e) => {
+        e && e.preventDefault();
+        el.classList.add('on');
+        const now = performance.now() * 0.001;
+        if (dir < 0) { if (!self._btnL) self._btnLT = now; self._btnL = 1; }
+        else { if (!self._btnR) self._btnRT = now; self._btnR = 1; }
+      };
+      const release = (e) => {
+        e && e.preventDefault();
+        el.classList.remove('on');
+        const now = performance.now() * 0.001;
+        if (dir < 0 && self._btnL) {
+          if (now - self._btnLT < CAM_TAP) self.yawSnap -= 1;
+          else self.yawReleaseSnap = true;
+          self._btnL = 0;
+        }
+        if (dir > 0 && self._btnR) {
+          if (now - self._btnRT < CAM_TAP) self.yawSnap += 1;
+          else self.yawReleaseSnap = true;
+          self._btnR = 0;
+        }
+      };
+      el.addEventListener('touchstart', press, { passive: false });
+      el.addEventListener('touchend', release, { passive: false });
+      el.addEventListener('touchcancel', release, { passive: false });
+      el.addEventListener('mousedown', press);
+      window.addEventListener('mouseup', () => { if (el.classList.contains('on')) release(); });
+    };
+    bindBtn($('camLeft'), -1);
+    bindBtn($('camRight'), 1);
+  },
+  _syncBtnYaw() {
+    const now = performance.now() * 0.001;
+    let v = 0;
+    if (this._btnL && now - this._btnLT >= CAM_TAP) v -= 1;
+    if (this._btnR && now - this._btnRT >= CAM_TAP) v += 1;
+    this.btnYaw = v;
+  },
   initPad() {
     const self = this;
     window.addEventListener('gamepadconnected', () => { self.gpHave = true; UI.toast('Controller connected'); });
     window.addEventListener('gamepaddisconnected', () => {
       const L = navigator.getGamepads ? navigator.getGamepads() : [];
-      if (![...L].some((g) => g && g.connected)) { self.gpHave = false; self.gpActive = false; self.gpX = 0; self.gpZ = 0; document.body.classList.remove('gp'); UI.toast('Controller disconnected'); }
+      if (![...L].some((g) => g && g.connected)) { self.gpHave = false; self.gpActive = false; self.gpX = 0; self.gpZ = 0; self.gpYaw = 0; document.body.classList.remove('gp'); UI.toast('Controller disconnected'); }
     });
     window.addEventListener('touchstart', () => { if (self.gpActive) { self.gpActive = false; document.body.classList.remove('gp'); } }, { capture: true, passive: true });
   },
@@ -398,25 +555,49 @@ const Input = {
     const v = this._deadzone(ax, ay);
     let sx = v.x, sz = v.z;
     if (now[14]) sx = -1; if (now[15]) sx = 1; if (now[12]) sz = -1; if (now[13]) sz = 1;
-    let used = Math.hypot(ax, ay) > 0.35; for (let i = 0; i < 16; i++) if (now[i]) used = true;
+    const rx = (gp.axes && gp.axes.length > 2) ? (gp.axes[2] || 0) : 0;
+    const ry = (gp.axes && gp.axes.length > 3) ? (gp.axes[3] || 0) : 0;
+    const rv = this._deadzone(rx, ry);
+    let used = Math.hypot(ax, ay) > 0.35 || Math.hypot(rx, ry) > 0.35; for (let i = 0; i < 16; i++) if (now[i]) used = true;
     if (used) { this.gpActive = true; document.body.classList.add('gp'); this.gpHave = true; }
     this.gpX = this.gpActive ? sx : 0; this.gpZ = this.gpActive ? sz : 0;
     if (this.gpActive) {
+      this.gpYaw = rv.x;
+      if (this._gpStickOn && Math.abs(rv.x) < 1e-4) this.yawReleaseSnap = true;
+      this._gpStickOn = Math.abs(rv.x) > 1e-4;
       if (edge(0)) this.slashEdge = true;
       if (edge(2) || edge(5)) this.spinEdge = true;
+      if (edge(4)) this.yawSnap -= 1; // LB: snap 45° left
+      if (edge(7)) this.yawSnap += 1; // RT: snap 45° right (RB stays spin)
       if (edge(9)) UI.onPause && UI.onPause();
       if (edge(0) && !document.body.classList.contains('inplay')) UI.onConfirm && UI.onConfirm();
       if (edge(1)) UI.onBack && UI.onBack();
+    } else {
+      this.gpYaw = 0;
     }
     this.prevBtn = now;
   },
   poll() {
     this.pollPad();
+    this._syncKbYaw();
+    this._syncBtnYaw();
     this.x = clamp(this.kbX + this.padX + this.gpX, -1, 1);
     this.z = clamp(this.kbZ + this.padZ + this.gpZ, -1, 1);
     const m = Math.hypot(this.x, this.z); if (m > 1) { this.x /= m; this.z /= m; }
     const se = this.slashEdge, sp = this.spinEdge; this.slashEdge = false; this.spinEdge = false;
     return { x: this.x, z: this.z, slashEdge: se, spinEdge: sp };
+  },
+  consumeCam() {
+    this._syncKbYaw();
+    this._syncBtnYaw();
+    const rate = clamp(this.kbYaw + this.btnYaw + this.gpYaw, -1, 1);
+    const snap = this.yawSnap;
+    const release = this.yawReleaseSnap;
+    const swipe = this.swipeDelta;
+    this.yawSnap = 0;
+    this.yawReleaseSnap = false;
+    this.swipeDelta = 0;
+    return { rate, snap, release, swipe };
   }
 };
 
@@ -511,6 +692,10 @@ const UI = {
     Game.ants = []; Game.spawnLeft = 0; Game.waveT = 0; Game.fx = [];
     Game.hitStop = 0; Game.shake = 0; Game._nextArm = 0;
     World.camYaw = CAM_YAW;
+    World.camYawTarget = CAM_YAW;
+    Input.kbYaw = 0; Input.btnYaw = 0; Input.gpYaw = 0;
+    Input.yawSnap = 0; Input.swipeDelta = 0; Input.yawReleaseSnap = false;
+    Input._qDown = Input._eDown = Input._btnL = Input._btnR = 0;
     World.snapCam();
     document.body.classList.add('inplay'); document.body.classList.remove('pause','lose');
     this.show('title', false); this.show('pause', false); this.show('lose', false); this.show('loading', false);
@@ -591,7 +776,7 @@ const World = {
   knightSpr: null, foodSpr: null, antSpr: [], fxSpr: [], ground: null,
   obstacles: [],
   cam: { x: 0, y: CAM_H, z: CAM_DIST },
-  camYaw: 0, camLock: 0,
+  camYaw: 0, camYawTarget: 0, camLock: 0,
   ready: false,
   asset(name) { return (window.__ASSETS && window.__ASSETS[name]) || ('art/' + name); },
   loadTex(name) {
@@ -714,12 +899,35 @@ const World = {
   },
   snapCam() {
     const k = Game.knight;
-    this.camYaw = CAM_YAW;
     this.cam.x = k.x - Math.sin(this.camYaw) * CAM_DIST;
     this.cam.y = CAM_H;
     this.cam.z = k.z + Math.cos(this.camYaw) * CAM_DIST;
     this.camera.position.set(this.cam.x, this.cam.y, this.cam.z);
     this.camera.lookAt(k.x, CAM_LOOK_Y, k.z);
+  },
+  snapYaw45(a) {
+    const step = Math.PI / 4;
+    return Math.round(a / step) * step;
+  },
+  applyCamTurn(dt) {
+    if (dt <= 1e-8) return;
+    if (Game.state !== 'play') { Input.consumeCam(); return; }
+    const t = Input.consumeCam();
+    if (t.swipe) {
+      this.camYawTarget += t.swipe;
+      this.camYaw += t.swipe * 0.85;
+    }
+    if (Math.abs(t.rate) > 0.01) {
+      const d = t.rate * CAM_TURN * dt;
+      this.camYawTarget += d;
+      this.camYaw += d;
+    }
+    if (t.snap) {
+      const cur = this.snapYaw45(this.camYawTarget);
+      this.camYawTarget = cur + t.snap * (Math.PI / 4);
+    }
+    if (t.release) this.camYawTarget = this.snapYaw45(this.camYawTarget);
+    this.camYaw = dampAngle(this.camYaw, this.camYawTarget, 14, dt);
   },
   updateCam(dt) {
     const k = Game.knight;
@@ -734,13 +942,13 @@ const World = {
       else this.camera.lookAt(k.x, CAM_LOOK_Y, k.z);
       return;
     }
-    this.camYaw = CAM_YAW;
+    this.applyCamTurn(dt);
     const tx = k.x - Math.sin(this.camYaw) * CAM_DIST;
     const ty = CAM_H;
     const tz = k.z + Math.cos(this.camYaw) * CAM_DIST;
-    this.cam.x = damp(this.cam.x, tx, 4.2, dt);
-    this.cam.y = damp(this.cam.y, ty, 4.2, dt);
-    this.cam.z = damp(this.cam.z, tz, 4.2, dt);
+    this.cam.x = damp(this.cam.x, tx, 5.2, dt);
+    this.cam.y = damp(this.cam.y, ty, 5.2, dt);
+    this.cam.z = damp(this.cam.z, tz, 5.2, dt);
     let lx = k.x + Math.sin(this.camYaw) * 0.18;
     let lz = k.z - Math.cos(this.camYaw) * 0.18;
     let x = this.cam.x, y = this.cam.y, z = this.cam.z;
@@ -1097,6 +1305,33 @@ function knightTex(k) {
   return list.length > 1 ? animFrame(list, k.at, 3) : list[0];
 }
 
+function fadeIfOccluding(spr, fx, fz, fr, fh) {
+  const cam = World.cam, k = Game.knight;
+  const abx = k.x - cam.x, abz = k.z - cam.z;
+  const len2 = abx * abx + abz * abz;
+  let amount = 0;
+  if (len2 > 1e-6) {
+    const t = clamp(((fx - cam.x) * abx + (fz - cam.z) * abz) / len2, 0, 1);
+    if (t > 0.06 && t < 0.92) {
+      const px = cam.x + abx * t, pz = cam.z + abz * t;
+      const dist = Math.hypot(fx - px, fz - pz);
+      const rad = (fr || 0.4) + 0.18;
+      if (dist < rad + 0.22) {
+        const along = 1 - Math.abs(t - 0.55) * 1.4;
+        const across = 1 - clamp((dist - rad * 0.15) / (rad + 0.22), 0, 1);
+        amount = clamp(Math.max(along, 0.35) * across, 0, 1);
+        if ((fh || 0.6) < 0.55) amount *= 0.75;
+      }
+    }
+  }
+  const op = lerp(1, 0.26, amount);
+  spr.mesh.material.transparent = true;
+  spr.mesh.material.opacity = op;
+  spr.mesh.material.depthWrite = false;
+  if (spr.blob && spr.blob.material) spr.blob.material.opacity = 0.26 * (0.3 + 0.7 * op);
+  spr._fade = amount;
+}
+
 function syncSprites() {
   const k = Game.knight;
   const vis = viewFromCamera(k);
@@ -1110,6 +1345,13 @@ function syncSprites() {
   const foodName = Game.food < FOOD_MAX * 0.55 ? 'sandwich_bitten.png' : 'sandwich_intact.png';
   World.setSpriteTex(World.foodSpr, foodName);
   World.place(World.foodSpr, FOOD.x, FOOD.z);
+  fadeIfOccluding(World.foodSpr, FOOD.x, FOOD.z, FOOD.r, FOOD.h);
+  if (World.decos) {
+    DECOS.forEach((d, i) => {
+      const spr = World.decos[i];
+      if (spr) fadeIfOccluding(spr, d[1], d[2], d[4], d[3]);
+    });
+  }
 
   World.ensureAnts(Game.ants.length);
   for (let i = 0; i < World.antSpr.length; i++) {
@@ -1255,6 +1497,17 @@ async function boot() {
       World.renderer.render(World.scene, World.camera);
     },
     camYaw() { return World.camYaw; },
+    camYawTarget() { return World.camYawTarget; },
+    setCamYaw(y, snapPos) {
+      World.camYaw = y; World.camYawTarget = y;
+      if (snapPos !== false) World.snapCam();
+    },
+    setCamRate(r) { Input.kbYaw = r; Input._qDown = r < 0 ? 1 : 0; Input._eDown = r > 0 ? 1 : 0; Input._qT = Input._eT = 0; },
+    foodFade() {
+      const list = [{ name: 'sandwich', fade: World.foodSpr._fade || 0, opacity: World.foodSpr.mesh.material.opacity }];
+      (World.decos || []).forEach((s, i) => list.push({ name: DECOS[i][0], fade: s._fade || 0, opacity: s.mesh.material.opacity }));
+      return list;
+    },
     start() { UI.startFromTitle(); },
     slash() { Input.slashEdge = true; Input.slashFromTouch = false; },
     spin() { Input.spinEdge = true; },
@@ -1281,6 +1534,7 @@ async function boot() {
       Input.kbX = 0; Input.kbZ = 0;
       World.camLock = 8;
       World.camYaw = Math.PI;
+      World.camYawTarget = Math.PI;
       World.cam.x = (k.x + FOOD.x) * 0.5;
       World.cam.y = 1.65;
       World.cam.z = k.z + 2.85;
