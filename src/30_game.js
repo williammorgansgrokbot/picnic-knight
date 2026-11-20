@@ -20,9 +20,7 @@ const WASP_NIBBLE = 2.04;        // was 2.4
 const BOSS_WINDOW = 22;          // was 42; last ~24% of a 90s round
 const PLAY_RADIUS = 6.5;
 const HITSTOP = 0.072;
-const CAM_DIST = 3.25;
-const CAM_H = 2.22;
-const CAM_LOOK_Y = 0.48;
+const CamFollow = { dist: 3.38, h: 2.18, lookY: 0.96 }; // was dist 3.25, h 2.22, lookY 0.48; modest tilt up + slight pull-back so ~30% of the frame is sky/background
 const ROUND_TIME = 90;          // was 180 (1.5-minute rounds)
 const STEAL_DUR = 5.15;
 // Emma keeps her established height. Stormy is about half as tall (Bill:
@@ -34,9 +32,14 @@ const SAUSAGE = { x: 0.12, z: 1.18, h: 0.62, r: 0.46 };
 // Two picnickers sit on the grass just beyond the blanket (~6.6u square,
 // edges near ±3.4). Placed opposite each other outside PLAY_RADIUS so one
 // is usually in the far background of any camera orbit.
+// Giant reclining backdrop picnickers. They sit on a far horizon ring
+// opposite the camera so they always fill the back sky, never the blanket.
+const WatchPlay = { far: 5.2, side: 4.3, h: 1.95, y: 0 };
+const WatchTitle = { far: 5.6, side: 5.2, h: 1.90, y: 0 };
+function watchLayout() { return Game.state === 'title' ? WatchTitle : WatchPlay; }
 const WATCHERS = [
-  { id: 'woman', x: 4.08, z: -1.50, h: 1.38, prefix: 'watcher_woman_' },
-  { id: 'man',   x: -3.58, z: -0.85, h: 1.36, prefix: 'watcher_man_' }
+  { id: 'woman', side: 1,  prefix: 'watcher_woman_' },
+  { id: 'man',   side: -1, prefix: 'watcher_man_' }
 ];
 const BEAR_H = 1.42;
 const BEAR_POP = 0.42;
@@ -382,7 +385,7 @@ const World = {
   renderer: null, scene: null, camera: null, tex: {},
   knightSpr: null, foodSpr: null, antSpr: [], fxSpr: [], ground: null,
   obstacles: [],
-  cam: { x: 0, y: CAM_H, z: CAM_DIST },
+  cam: { x: 0, y: CamFollow.h, z: CamFollow.dist },
   camYaw: 0, camYawTarget: 0, camLock: 0,
   ready: false,
   asset(name) { return (window.__ASSETS && window.__ASSETS[name]) || ('art/' + name); },
@@ -469,12 +472,12 @@ const World = {
       this.scene.add(s.mesh); this.scene.add(s.blob);
     });
     this.watcherSpr = WATCHERS.map((w, i) => {
-      const s = this.makeSprite(w.prefix + '0.png', w.h);
-      s.mesh.renderOrder = -2;
-      s.blob.renderOrder = -3;
-      this.place(s, w.x, w.z, 0);
+      const s = this.makeSprite(w.prefix + '0.png', watchLayout().h);
+      s.mesh.renderOrder = -5;
+      s.blob.visible = false;
+      this.place(s, 0, -watchLayout().far, 0);
       this.scene.add(s.mesh); this.scene.add(s.blob);
-      s._phase = i * 1.15;
+      s._phase = i * 1.7;
       return s;
     });
     this.bearSpr = this.makeSprite('bear_pop.png', BEAR_H);
@@ -633,11 +636,11 @@ const World = {
   },
   snapCam() {
     const k = Game.knight;
-    this.cam.x = k.x - Math.sin(this.camYaw) * CAM_DIST;
-    this.cam.y = CAM_H;
-    this.cam.z = k.z + Math.cos(this.camYaw) * CAM_DIST;
+    this.cam.x = k.x - Math.sin(this.camYaw) * CamFollow.dist;
+    this.cam.y = CamFollow.h;
+    this.cam.z = k.z + Math.cos(this.camYaw) * CamFollow.dist;
     this.camera.position.set(this.cam.x, this.cam.y, this.cam.z);
-    this.camera.lookAt(k.x, CAM_LOOK_Y, k.z);
+    this.camera.lookAt(k.x, CamFollow.lookY, k.z);
   },
   snapYaw45(a) {
     const step = Math.PI / 4;
@@ -673,13 +676,13 @@ const World = {
       this.camLock -= dt;
       this.camera.position.set(this.cam.x, this.cam.y, this.cam.z);
       if (this.lookLock) this.camera.lookAt(this.lookLock.x, this.lookLock.y, this.lookLock.z);
-      else this.camera.lookAt(k.x, CAM_LOOK_Y, k.z);
+      else this.camera.lookAt(k.x, CamFollow.lookY, k.z);
       return;
     }
     this.applyCamTurn(dt);
-    const tx = k.x - Math.sin(this.camYaw) * CAM_DIST;
-    const ty = CAM_H;
-    const tz = k.z + Math.cos(this.camYaw) * CAM_DIST;
+    const tx = k.x - Math.sin(this.camYaw) * CamFollow.dist;
+    const ty = CamFollow.h;
+    const tz = k.z + Math.cos(this.camYaw) * CamFollow.dist;
     this.cam.x = damp(this.cam.x, tx, 5.2, dt);
     this.cam.y = damp(this.cam.y, ty, 5.2, dt);
     this.cam.z = damp(this.cam.z, tz, 5.2, dt);
@@ -694,7 +697,7 @@ const World = {
       z += Math.sin(Game.t * 63) * a * 0.5;
     }
     this.camera.position.set(x, y, z);
-    this.camera.lookAt(lx, CAM_LOOK_Y, lz);
+    this.camera.lookAt(lx, CamFollow.lookY, lz);
   },
   reset() {
     if (this.foodSprs) {
@@ -1140,6 +1143,7 @@ function killBug(a, dirX, dirZ, outward) {
     Snd.bonk();
   }
   Game.score += pts;
+  Game.watcherCheerUntil = (Game.t || 0) + 0.9;
   spawnScorePop(a.x, a.z, pts);
   burstAt(a.x, a.z, a.y || 0.1);
   Game.hitStop = Math.max(Game.hitStop, a.type === 'boss' ? 0.16 : HITSTOP);
@@ -1593,34 +1597,25 @@ function fadeIfOccluding(spr, fx, fz, fr, fh) {
   spr._fade = amount;
 }
 
-function fadeWatcher(spr, x, z) {
+function watcherLook() {
+  if (Game.state === 'title') return { x: -0.4, z: 0.35 };
+  if (Game.state === 'steal' && World.lookLock) return { x: World.lookLock.x, z: World.lookLock.z };
+  const k = Game.knight || { x: 0, z: 0 };
+  return { x: k.x, z: k.z };
+}
+
+// Place a giant on the far horizon ring, always behind the picnic from the camera.
+function horizonPos(side) {
   const cam = World.camera ? World.camera.position : World.cam;
-  let lookX, lookZ;
-  if (Game.state === 'title') { lookX = -0.4; lookZ = 0.35; }
-  else if (Game.state === 'steal' && World.lookLock) { lookX = World.lookLock.x; lookZ = World.lookLock.z; }
-  else { lookX = Game.knight.x; lookZ = Game.knight.z; }
-  const lx = lookX - cam.x, lz = lookZ - cam.z;
-  const llen = Math.hypot(lx, lz) || 1;
-  const vx = x - cam.x, vz = z - cam.z;
-  const along = (vx * lx + vz * lz) / llen;
-  const t = along / llen; // 0 at camera, 1 at the look point
-  let fade = 0;
-  // Only fade when the figure actually sits in the central play view.
-  const mid = new THREE.Vector3(x, 1.15, z).project(World.camera);
-  const inPlayCone = Math.abs(mid.x) < 0.58 && mid.y < 0.18 && mid.y > -0.95;
-  if (inPlayCone && t < 1.02) fade = clamp((1.02 - t) / 0.4, 0, 1);
-  const dCam = Math.hypot(vx, vz);
-  if (dCam < 2.5) fade = Math.max(fade, 1 - dCam / 2.5);
-  const op = lerp(1, 0, clamp(fade, 0, 1));
-  spr.mesh.material.transparent = true;
-  spr.mesh.material.opacity = op;
-  spr.mesh.material.depthWrite = false;
-  spr.mesh.visible = op > 0.04;
-  if (spr.blob) {
-    spr.blob.visible = op > 0.08;
-    if (spr.blob.material) spr.blob.material.opacity = 0.22 * op;
-  }
-  spr._fade = fade;
+  const look = watcherLook();
+  let fx = look.x - cam.x, fz = look.z - cam.z;
+  const fl = Math.hypot(fx, fz) || 1;
+  fx /= fl; fz /= fl;
+  const rx = -fz, rz = fx;
+  const L = watchLayout();
+  const hx = look.x + fx * L.far;
+  const hz = look.z + fz * L.far;
+  return { x: hx + rx * L.side * side, z: hz + rz * L.side * side };
 }
 
 function basketSpec() {
@@ -1722,19 +1717,30 @@ function updateBear(dt) {
 function updateWatchers() {
   if (!World.watcherSpr) return;
   const t = Game.t || Game.titleT || 0;
+  const cheer = (Game.watcherCheerUntil || 0) > t;
   WATCHERS.forEach((w, i) => {
     const spr = World.watcherSpr[i];
     if (!spr) return;
-    const seq = [0, 1, 2, 1];
-    const frame = seq[Math.floor((t + (spr._phase || 0)) * 1.05) % 4];
-    World.setSpriteH(spr, w.h);
+    let frame = 0;
+    if (cheer && Game.state === 'play') frame = 2;
+    else {
+      const cycle = (t + (spr._phase || 0)) % 4.4;
+      frame = (cycle > 4.05) ? 1 : 0; // a short blink every few seconds
+    }
+    const L = watchLayout();
+    const pos = horizonPos(w.side);
+    w.x = pos.x; w.z = pos.z; w.h = L.h;
+    World.setSpriteH(spr, L.h);
     World.setSpriteTex(spr, w.prefix + frame + '.png');
-    const bob = Math.sin((t + (spr._phase || 0)) * 1.4) * 0.03;
-    World.place(spr, w.x, w.z, bob);
-    // Face the picnic (origin) in screen space so they appear to watch the battle.
-    const face = screenFace(-w.x, -w.z, 1);
-    World.flip(spr, face);
-    fadeWatcher(spr, w.x, w.z);
+    World.place(spr, pos.x, pos.z, L.y || 0);
+    // Art is already drawn for left/right horizon halves — do not flip.
+    World.flip(spr, 1);
+    spr.mesh.visible = true;
+    spr.mesh.material.opacity = 1;
+    spr.mesh.material.transparent = true;
+    spr.mesh.material.depthWrite = false;
+    spr.mesh.renderOrder = -5;
+    if (spr.blob) spr.blob.visible = false;
   });
 }
 
@@ -1880,8 +1886,8 @@ function loop(now) {
   let dt = t - (loop._t || t); loop._t = t;
   dt = Math.min(1 / 30, Math.max(0, dt));
   if (loop.frozen) {
-    syncSprites();
     World.updateCam(0);
+    syncSprites();
     World.updateArrow();
     World.renderer.render(World.scene, World.camera);
     return;
@@ -1893,8 +1899,8 @@ function loop(now) {
   } else if (Game.state === 'play') {
     if (Game.hitStop > 0) {
       Game.hitStop -= dt;
-      syncSprites();
       World.updateCam(dt);
+      syncSprites();
       World.updateArrow();
       World.renderer.render(World.scene, World.camera);
       return;
@@ -1906,15 +1912,15 @@ function loop(now) {
     updateTitle(dt);
   } else Input.poll();
   if (Game.state === 'play' || Game.state === 'pause' || Game.state === 'lose' || Game.state === 'steal' || Game.state === 'clear') {
-    syncSprites();
     World.updateCam(dt);
+    syncSprites();
     World.updateArrow();
   } else {
     Game.knight.anim = 'idle'; Game.knight.at += dt;
     Game.knight.yaw = 0.85;
     if (Game.state === 'title') updateTitle(0);
-    syncSprites();
     World.updateCam(dt);
+    syncSprites();
   }
   World.renderer.render(World.scene, World.camera);
 }
@@ -1950,11 +1956,16 @@ async function boot() {
     watchers() {
       return (World.watcherSpr || []).map((spr, i) => {
         const w = WATCHERS[i];
-        const mid = new THREE.Vector3(w.x, w.h * 0.5, w.z).project(World.camera);
-        const feet = new THREE.Vector3(w.x, 0, w.z).project(World.camera);
-        const head = new THREE.Vector3(w.x, w.h, w.z).project(World.camera);
+        const L = watchLayout();
+        const h = L.h;
+        const y0 = L.y || 0;
+        const mid = new THREE.Vector3(w.x, y0 + h * 0.5, w.z).project(World.camera);
+        const feet = new THREE.Vector3(w.x, y0, w.z).project(World.camera);
+        const head = new THREE.Vector3(w.x, y0 + h, w.z).project(World.camera);
         return {
-          id: w.id, x: w.x, z: w.z, h: w.h,
+          id: w.id, x: w.x, z: w.z, h: h, side: w.side,
+          layout: { far: L.far, side: L.side, h: L.h, y: L.y },
+          cam: { dist: CamFollow.dist, h: CamFollow.h, lookY: CamFollow.lookY },
           opacity: spr.mesh.material.opacity,
           visible: !!(spr.mesh.visible && spr.mesh.material.opacity > 0.08),
           mid: { x: mid.x, y: mid.y },
@@ -1963,15 +1974,26 @@ async function boot() {
         };
       });
     },
-    setWatcher(i, x, z, h) {
-      if (!WATCHERS[i]) return;
-      if (x != null) WATCHERS[i].x = x;
-      if (z != null) WATCHERS[i].z = z;
-      if (h != null) WATCHERS[i].h = h;
+    setWatchLayout(far, side, h, y) {
+      const L = watchLayout();
+      if (far != null) L.far = far;
+      if (side != null) L.side = side;
+      if (h != null) L.h = h;
+      if (y != null) L.y = y;
       updateWatchers();
       World.updateCam(0);
       World.renderer.render(World.scene, World.camera);
     },
+    setCamFollow(dist, h, lookY) {
+      if (dist != null) CamFollow.dist = dist;
+      if (h != null) CamFollow.h = h;
+      if (lookY != null) CamFollow.lookY = lookY;
+      if (Game.state === 'play' || Game.state === 'pause') World.snapCam();
+      World.updateCam(0);
+      updateWatchers();
+      World.renderer.render(World.scene, World.camera);
+    },
+    setWatcher(i, x, z, h) { this.setWatchLayout(x, z, h); },
     knight() { const k = Game.knight; return { x: k.x, z: k.z, yaw: k.yaw, view: k.view, face: k.face, anim: k.anim, speed: k.speed, vx: k.vx, vz: k.vz }; },
     input() { return { x: Input.x, z: Input.z, padX: Input.padX, padZ: Input.padZ }; },
     screenPos() {
@@ -1988,14 +2010,14 @@ async function boot() {
         if (Game.hitStop > 0) Game.hitStop = Math.max(0, Game.hitStop - dt);
         else { Game.t += dt; updatePlay(dt); }
       } else if (Game.state === 'title') { updateTitle(dt); }
-      syncSprites();
       World.updateCam(dt);
+      syncSprites();
       World.updateArrow();
       World.renderer.render(World.scene, World.camera);
     },
     syncNow() {
-      syncSprites();
       World.updateCam(0);
+      syncSprites();
       World.updateArrow();
       World.renderer.render(World.scene, World.camera);
     },
@@ -2169,8 +2191,8 @@ async function boot() {
       World.lockStealCam();
       loop.frozen = true;
       UI.hud();
-      syncSprites();
       World.updateCam(0);
+      syncSprites();
       World.renderer.render(World.scene, World.camera);
     }
   };
